@@ -14,7 +14,7 @@ import {
   EventStreamContentType,
   fetchEventSource,
 } from "@fortaine/fetch-event-source";
-import { prettyObject } from "@/app/utils/format";
+import { prettyGemini, prettyObject } from "@/app/utils/format";
 import { getClientConfig } from "@/app/config/client";
 import { makeAzurePath } from "@/app/azure";
 
@@ -67,6 +67,7 @@ export class ChatGPTApi implements LLMApi {
   }
 
   async chat(options: ChatOptions) {
+    const modelName = options.config.model;
     const messages = options.messages.map((v) => ({
       role: v.role,
       content: v.content,
@@ -97,9 +98,11 @@ export class ChatGPTApi implements LLMApi {
     const shouldStream = !!options.config.stream;
     const controller = new AbortController();
     options.onController?.(controller);
-
+    const isGemini = modelName === "gemini-pro";
     try {
-      const chatPath = this.path(OpenaiPath.ChatPath);
+      const chatPath = isGemini
+        ? OpenaiPath.GeminiPath
+        : this.path(OpenaiPath.ChatPath);
       const chatPayload = {
         method: "POST",
         body: JSON.stringify(requestPayload),
@@ -175,8 +178,16 @@ export class ChatGPTApi implements LLMApi {
               let extraInfo = await res.clone().text();
               try {
                 const resJson = await res.clone().json();
-                extraInfo = prettyObject(resJson);
-              } catch {}
+                extraInfo = isGemini
+                  ? prettyGemini(resJson)
+                  : prettyObject(resJson);
+              } catch (err) {
+                console.log(
+                  "%c 🤡-[ err ]-190",
+                  "font-size:13px; background:pink; color:#bf2c9f;",
+                  err,
+                );
+              }
 
               if (res.status === 401) {
                 responseTexts.push(Locale.Error.Unauthorized);
@@ -192,6 +203,11 @@ export class ChatGPTApi implements LLMApi {
             }
           },
           onmessage(msg) {
+            console.log(
+              "%c 🤡-[ msg ]-201",
+              "font-size:13px; background:pink; color:#bf2c9f;",
+              msg,
+            );
             if (msg.data === "[DONE]" || finished) {
               return finish();
             }

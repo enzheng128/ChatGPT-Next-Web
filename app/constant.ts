@@ -69,6 +69,7 @@ export enum ServiceProvider {
 
 export const OpenaiPath = {
   ChatPath: "v1/chat/completions",
+  GeminiPath: "api/gemini/v1/chat/completions",
   UsagePath: "dashboard/billing/usage",
   SubsPath: "dashboard/billing/subscription",
   ListModelPath: "v1/models",
@@ -96,7 +97,13 @@ export const KnowledgeCutOffDate: Record<string, string> = {
   "gpt-4-vision-preview": "2023-04",
 };
 
+export const GEMINI_PRO = "gemini-pro";
+
 export const DEFAULT_MODELS = [
+  {
+    name: GEMINI_PRO,
+    available: true,
+  },
   {
     name: "gpt-4",
     available: true,

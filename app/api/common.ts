@@ -3,7 +3,19 @@ import { getServerSideConfig } from "../config/server";
 import { DEFAULT_MODELS, OPENAI_BASE_URL } from "../constant";
 import { collectModelTable } from "../utils/model";
 import { makeAzurePath } from "../azure";
-
+import { StartChatParams } from "@google/generative-ai";
+export type GptBodyValue = {
+  messages: {
+    role: string;
+    content: string;
+  }[];
+  stream: boolean;
+  model: string;
+  temperature: number;
+  top_p: number;
+  presence_penalty: number;
+  frequency_penalty: number;
+};
 const serverConfig = getServerSideConfig();
 
 export async function requestOpenai(req: NextRequest) {
@@ -117,4 +129,42 @@ export async function requestOpenai(req: NextRequest) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+const mapRole = {
+  assistant: "model",
+  user: "user",
+  system: "user",
+};
+
+// 合并相同role
+const mergeRole = (messages: any[]) => {
+  const merged: any[] = [];
+  let lastRole = "";
+  messages.forEach((message) => {
+    const { role, parts } = message;
+    if (lastRole === role) {
+      merged[merged.length - 1].parts.push(...parts);
+    } else {
+      merged.push(message);
+    }
+    lastRole = role;
+  });
+  return merged;
+};
+
+export function formatterGemini(gptBody: GptBodyValue): any {
+  return {
+    contents: mergeRole(
+      gptBody.messages.map((v) => ({
+        // @ts-ignore
+        role: mapRole[v.role] || v.role,
+        parts: [{ text: v.content }],
+      })),
+    ),
+    generationConfig: {
+      temperature: gptBody.temperature,
+      topP: gptBody.top_p,
+    },
+  };
 }
