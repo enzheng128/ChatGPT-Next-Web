@@ -25,6 +25,7 @@ function parseApiKey(bearToken: string) {
 }
 
 export function auth(req: NextRequest) {
+  if (process.env.COPILOT_TOKEN) return {};
   const authToken = req.headers.get("Authorization") ?? "";
 
   // check if it is openai api key or user token

@@ -142,6 +142,7 @@ export class ChatGPTApi implements LLMApi {
 
         const finish = () => {
           if (!finished) {
+            console.trace();
             finished = true;
             options.onFinish(responseText + remainText);
           }
@@ -154,11 +155,6 @@ export class ChatGPTApi implements LLMApi {
           async onopen(res) {
             clearTimeout(requestTimeoutId);
             const contentType = res.headers.get("content-type");
-            console.log(
-              "[OpenAI] request response content type: ",
-              contentType,
-            );
-
             if (contentType?.startsWith("text/plain")) {
               responseText = await res.clone().text();
               return finish();
@@ -166,9 +162,9 @@ export class ChatGPTApi implements LLMApi {
 
             if (
               !res.ok ||
-              !res.headers
-                .get("content-type")
-                ?.startsWith(EventStreamContentType) ||
+              // !res.headers
+              //   .get("content-type")
+              //   ?.startsWith(EventStreamContentType) ||
               res.status !== 200
             ) {
               const responseTexts = [responseText];
@@ -188,7 +184,7 @@ export class ChatGPTApi implements LLMApi {
 
               responseText = responseTexts.join("\n\n");
 
-              return finish();
+              // return finish();
             }
           },
           onmessage(msg) {

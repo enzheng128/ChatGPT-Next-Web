@@ -1,24 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSideConfig } from "../config/server";
-import { DEFAULT_MODELS, OPENAI_BASE_URL } from "../constant";
+import { COPILOT_BASE_URL, DEFAULT_MODELS, OPENAI_BASE_URL } from "../constant";
 import { collectModelTable } from "../utils/model";
 import { makeAzurePath } from "../azure";
+import crypto from "crypto-js";
+// @ts-ignore
+import { v4 } from "uuid";
 
 const serverConfig = getServerSideConfig();
+
+const machine_id = crypto.SHA256(v4()).toString(crypto.enc.Hex);
+let accessToken = {
+  token: "",
+  expire: 0,
+};
 
 export async function requestOpenai(req: NextRequest) {
   const controller = new AbortController();
 
   const authValue = req.headers.get("Authorization") ?? "";
   const authHeaderName = serverConfig.isAzure ? "api-key" : "Authorization";
-
+  const isCopilot =
+    !serverConfig.azureUrl &&
+    !serverConfig.baseUrl &&
+    !!process.env.COPILOT_TOKEN;
   let path = `${req.nextUrl.pathname}${req.nextUrl.search}`.replaceAll(
-    "/api/openai/",
+    isCopilot ? "/api/openai/v1/" : "/api/openai/",
     "",
   );
 
-  let baseUrl =
-    serverConfig.azureUrl || serverConfig.baseUrl || OPENAI_BASE_URL;
+  let baseUrl = isCopilot
+    ? COPILOT_BASE_URL
+    : serverConfig.azureUrl || serverConfig.baseUrl || OPENAI_BASE_URL;
 
   if (!baseUrl.startsWith("http")) {
     baseUrl = `https://${baseUrl}`;
@@ -53,15 +66,35 @@ export async function requestOpenai(req: NextRequest) {
   }
 
   const fetchUrl = `${baseUrl}/${path}`;
+  const copilotAccessToken = isCopilot ? await checkAndGeToken() : null;
+  const headers: any = isCopilot
+    ? {
+        Host: "api.githubcopilot.com",
+        Authorization: `Bearer ${copilotAccessToken}`,
+        "X-Request-Id": v4(),
+        "X-Github-Api-Version": "2023-07-07",
+        "Vscode-Sessionid": String(v4()) + Date.now(),
+        "vscode-machineid": machine_id,
+        "Editor-Version": "vscode/1.85.0",
+        "Editor-Plugin-Version": "copilot-chat/0.11.1",
+        "Openai-Organization": "github-copilot",
+        "Copilot-Integration-Id": "vscode-chat",
+        "Openai-Intent": "conversation-panel",
+        "Content-Type": "application/json",
+        "User-Agent": "GitHubCopilotChat/0.11.1",
+        Accept: "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+      }
+    : {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        [authHeaderName]: authValue,
+        ...(serverConfig.openaiOrgId && {
+          "OpenAI-Organization": serverConfig.openaiOrgId,
+        }),
+      };
   const fetchOptions: RequestInit = {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store",
-      [authHeaderName]: authValue,
-      ...(serverConfig.openaiOrgId && {
-        "OpenAI-Organization": serverConfig.openaiOrgId,
-      }),
-    },
+    headers,
     method: req.method,
     body: req.body,
     // to fix #2485: https://stackoverflow.com/questions/55920957/cloudflare-worker-typeerror-one-time-use-body
@@ -118,3 +151,32 @@ export async function requestOpenai(req: NextRequest) {
     clearTimeout(timeoutId);
   }
 }
+
+export const checkAndGeToken = async () => {
+  if (accessToken.expire > Date.now()) {
+    return accessToken.token;
+  }
+  const token = await getCopilotV2Token(process.env.COPILOT_TOKEN);
+  accessToken.token = token;
+  accessToken.expire = Date.now() + 1000 * 20 * 60;
+  return accessToken.token;
+};
+
+export const getCopilotV2Token = async (copilotToken: string | any) => {
+  if (!copilotToken) return;
+  const headers = {
+    Host: "api.github.com",
+    authorization: `token ${copilotToken}`,
+    "Editor-Version": "vscode/1.85.0",
+    "Editor-Plugin-Version": "copilot-chat/0.11.1",
+    "User-Agent": "GitHubCopilotChat/0.11.1",
+    Accept: "*/*",
+    "Accept-Encoding": "gzip, deflate, br",
+  };
+  const response = await fetch(
+    "https://api.github.com/copilot_internal/v2/token",
+    { headers },
+  );
+  const responseJson = await response.json();
+  return responseJson["token"];
+};

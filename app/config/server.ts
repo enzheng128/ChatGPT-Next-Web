@@ -7,6 +7,7 @@ declare global {
       PROXY_URL?: string; // docker only
 
       OPENAI_API_KEY?: string;
+      COPILOT_TOKEN?: string;
       CODE?: string;
 
       BASE_URL?: string;
